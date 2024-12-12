@@ -48,6 +48,6 @@ Run Scans: Select a target (URL or IP) and one or more scan actions from the for
 View Results: After submission, scan results will appear on the right side of the page. Each scan can be expanded for more details and closed when done.
 Interactive Cards: Click the close button on the top-right of each scan result card to remove it.
 
-#### Contributing
+#### Contributing:
 
 We welcome contributions to enhance the Security Toolkit! If you have suggestions for new features or improvements, please feel free to submit a pull request or open an issue.
