@@ -1,0 +1,241 @@
+{% load django_bootstrap5 %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Security Toolkit</title>
+    {% bootstrap_css %}
+    {% bootstrap_javascript %}
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: Arial, sans-serif;
+        }
+        nav {
+            margin-bottom: 20px;
+        }
+        .container-fluid {
+            max-width: 1200px;
+        }
+        .form-label {
+            font-weight: bold;
+        }
+        .card {
+            margin-top: 10px;
+            position: relative;
+        }
+        .card .close-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            color: #ff0000;
+            font-size: 1.2rem;
+            cursor: pointer;
+        }
+        .group-container {
+            margin-top: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 10px;
+            background: #f9f9f9;
+        }
+        .group-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .group-header:hover {
+            background-color: #f1f1f1;
+        }
+        .group-body {
+            display: none;
+            padding-top: 10px;
+        }
+        pre {
+            background-color: #f1f1f1;
+            padding: 10px;
+            border-radius: 5px;
+            white-space: pre-wrap;
+        }
+        .results-header {
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+        .form-container {
+            background: #ffffff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+        .results-container {
+            background: #ffffff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            max-height: 500px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="#"><i class="fas fa-shield-alt"></i> Security Toolkit</a>
+    </div>
+</nav>
+
+<div class="container-fluid bg-white p-4 rounded shadow-sm">
+    <h1 class="mb-4 text-center">Security & Network Toolkit</h1>
+    <div class="row">
+        <!-- Form Section -->
+        <div class="col-md-4">
+            <div class="form-container">
+                <h4 class="mb-4">Run Scans</h4>
+                <form id="scan-form" action="{% url 'run_scan' %}" method="POST">
+                    {% csrf_token %}
+                    <div class="form-group">
+                        <label for="id_target" class="form-label">Target (URL or IP)</label>
+                        {{ form.target }}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Actions</label>
+                        <div>
+                            {% for widget in form.action %}
+                            <div class="form-check mb-2">
+                                {{ widget.tag }}
+                                <label class="form-check-label">{{ widget.choice_label }}</label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Run Selected Scans</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div class="col-md-8">
+            <div class="results-container">
+                <h4>Scan Results</h4>
+                <div id="scan-results"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+   $(document).ready(function () {
+    let groupMap = {};
+
+    function createGroup(target) {
+        const groupId = `group-${target.replace(/[^a-zA-Z0-9]/g, '_')}`;
+
+        const group = `
+            <div class="group-container" id="${groupId}">
+                <div class="group-header" onclick="$('#${groupId} .group-body').toggle()">
+                    <span>${target}</span>
+                    <span>&#9660;</span>
+                </div>
+                <div class="group-body"></div>
+            </div>
+        `;
+
+        $("#scan-results").append(group);
+        groupMap[target] = $(`#${groupId} .group-body`);
+    }
+
+    function closeAllGroups() {
+        Object.values(groupMap).forEach(groupBody => groupBody.hide());
+    }
+
+    function removeCard(scanId, target) {
+        $(`#${scanId}`).remove();
+
+        const groupBody = groupMap[target];
+        if (groupBody.children().length === 0) {
+            groupBody.parent().remove();
+            delete groupMap[target];
+        }
+    }
+
+    $("#scan-form").on("submit", function (e) {
+        e.preventDefault(); // Prevent form submission
+
+        const form = $(this);
+        const csrfToken = $("input[name='csrfmiddlewaretoken']").val();
+        const target = $("#id_target").val();
+        const selectedActions = $("input[name='action']:checked");
+
+        if (!selectedActions.length) {
+            alert("Please select at least one action.");
+            return;
+        }
+
+        if (!groupMap[target]) {
+            createGroup(target);
+        }
+
+        closeAllGroups(); // Close all other groups
+
+        const groupBody = groupMap[target];
+        groupBody.show(); // Open the current group
+
+        selectedActions.each(function () {
+            const action = $(this).val();
+            const actionName = $(this).siblings("label").text();
+            const scanId = `scan-${Date.now()}-${action}`;
+
+            // Create a card for the scan output
+            const scanCard = `
+                <div class="card" id="${scanId}">
+                    <div class="close-btn">&times;</div>
+                    <div class="card-header">
+                        <span class="results-header"><i class="fas fa-terminal"></i> ${actionName} Output</span>
+                    </div>
+                    <div class="card-body">
+                        <pre class="output">Running scan... Please wait...</pre>
+                    </div>
+                </div>
+            `;
+
+            groupBody.append(scanCard);
+
+            // Attach the remove functionality to the close button
+            $(`#${scanId} .close-btn`).on("click", function () {
+                removeCard(scanId, target);
+            });
+
+            // Send an AJAX request for the selected action
+            $.ajax({
+                url: form.attr("action"),
+                type: "POST",
+                data: {
+                    csrfmiddlewaretoken: csrfToken,
+                    target: target,
+                    action: action,
+                },
+                success: function (response) {
+                    const output = response.output || `Error: ${response.error}`;
+                    $(`#${scanId} .output`).text(output);
+                },
+                error: function (xhr) {
+                    $(`#${scanId} .output`).text(`Error: ${xhr.status} - ${xhr.statusText}`);
+                },
+            });
+        });
+    });
+});
+
+</script>
+</body>
+</html>
